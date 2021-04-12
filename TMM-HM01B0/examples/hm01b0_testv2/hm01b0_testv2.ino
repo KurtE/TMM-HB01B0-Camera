@@ -58,8 +58,8 @@ File file;
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST  0  // "RX1" on left side of Sparkfun ML Carrier
 
-#define TFT_ST7789 1
-//#define TFT_ILI9341 1
+//#define TFT_ST7789 1
+#define TFT_ILI9341 1
 
 #ifdef TFT_ST7789
 //ST7735 Adafruit 320x240 display
@@ -206,10 +206,12 @@ void setup()
   Serial.println("Send the 'f' character to read a frame using FlexIO (changes hardware setup!)");
   Serial.println("Send the 'c' character to start/stop continuous display mode");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
-  Serial.println("Send the 'd' character to read a frame using DMA ...");
+  Serial.println("Send the 'd' character to read a multiple frames using DMA ...");
+  Serial.println("Send the 'D' character to read a ONE frame using DMA ...");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
   Serial.println("send the 'r' Show Camera register settings");
   Serial.println("send the 'v' Show VSYNCH Timing");
+  Serial.println("send the '?' Show some frame debug");
   Serial.println("Send the '0' character to blank the display");
   Serial.println();
 
@@ -225,14 +227,23 @@ uint16_t *last_dma_frame_buffer = nullptr;
 
 void hm01b0_dma_callback(void *pfb) {
   //Serial.printf("Callback: %x\n", (uint32_t)pfb);
+  if (tft.asyncUpdateActive()) return; // don't do anything while still active
+#if 1
+  tft.setOrigin(-2, -2);
+  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (const uint8_t *)pfb, mono_palette);
+  tft.setOrigin(0, 0);
+#else
+
   uint8_t *pframeBuffer = (uint8_t*)pfb;
   for(int i = 0; i < FRAME_HEIGHT*FRAME_WIDTH; i++) {
     uint8_t b = *pframeBuffer++;
     imageBuffer[i] = color565(b, b, b);
   }
+
   tft.writeRect(0, 0, tft.width(), tft.height(), imageBuffer);
   //tft.writeSubImageRect(0, 0, tft.width(), tft.height(),  (FRAME_WIDTH - tft.width()) / 2, (FRAME_HEIGHT - tft.height()),
   //                        FRAME_WIDTH, FRAME_HEIGHT, imageBuffer);
+#endif
   tft.updateScreenAsync();
 
   last_dma_frame_buffer = (uint16_t*)pfb;
@@ -331,13 +342,24 @@ void loop()
             tft.useFrameBuffer(false);
             g_dma_mode = false;
           } else {
+            tft.useFrameBuffer(true);
             hm01b0.startReadFrameDMA(&hm01b0_dma_callback, frameBuffer, frameBuffer2);
             Serial.println("*** Return from startReadFrameDMA ***");
-            tft.useFrameBuffer(true);
             //        tft.updateScreenAsync(true);
             //        Serial.println("*** Return from updateScreenAsync ***");
             g_dma_mode = true;
           }
+          break;
+        }
+      case 'D':
+        {
+          // Call the dma stuff, tell it for only one frame.
+          hm01b0.startReadFrameDMA(nullptr, frameBuffer, frameBuffer2, true);
+          Serial.println("*** Return from startReadFrameDMA single frame mode ***");
+          tft.setOrigin(-2, -2);
+          tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
+          tft.setOrigin(0, 0);
+          g_dma_mode = false;
           break;
         }
       case 'f':
@@ -377,6 +399,9 @@ void loop()
         }
         break;
       }
+      case '?':
+        hm01b0.captureFrameStatistics();
+        break;
      }
   }
 

@@ -131,7 +131,9 @@ class HM01B0
 	// Lets try a dma version.  Doing one DMA that is synchronous does not gain anything
 	// So lets have a start, stop... Have it allocate 2 frame buffers and it's own DMA 
 	// buffers, with the option of setting your own buffers if desired.
-	bool startReadFrameDMA(void(*callback)(void *frame_buffer)=nullptr, uint8_t *fb1=nullptr, uint8_t *fb2=nullptr);
+	void captureFrameStatistics();
+
+	bool startReadFrameDMA(void(*callback)(void *frame_buffer)=nullptr, uint8_t *fb1=nullptr, uint8_t *fb2=nullptr, bool single_frame = false);
 	bool stopReadFrameDMA();
 	inline uint32_t frameCount() {return _dma_frame_count;}
 	inline void *frameBuffer() {return _dma_last_completed_frame;}
@@ -215,19 +217,19 @@ class HM01B0
 	}
 	
   private:
-  	uint8_t VSYNC_PIN = 33;
-	uint8_t PCLK_PIN = 8;
-	uint8_t HSYNC_PIN = 32;
-	uint8_t MCLK_PIN = 7;
-	uint8_t EN_PIN = 2;
-	uint8_t G0 = 40;
-	uint8_t G1 = 41;
-	uint8_t G2 = 42;
-	uint8_t G3 = 43;
-	uint8_t G4 = 44;
-	uint8_t G5 = 45;
-	uint8_t G6 = 6;
-	uint8_t G7 = 9;
+  	const uint8_t VSYNC_PIN = 33;
+	const uint8_t PCLK_PIN = 8;
+	const uint8_t HSYNC_PIN = 32;
+	const uint8_t MCLK_PIN = 7;
+	const uint8_t EN_PIN = 2;
+	const uint8_t G0 = 40;
+	const uint8_t G1 = 41;
+	const uint8_t G2 = 42;
+	const uint8_t G3 = 43;
+	const uint8_t G4 = 44;
+	const uint8_t G5 = 45;
+	const uint8_t G6 = 6;
+	const uint8_t G7 = 9;
 
 	
 	uint32_t _vsyncMask;
@@ -240,7 +242,7 @@ class HM01B0
 	uint32_t OMV_XCLK_FREQUENCY	= 6000000;
 
 	// DMA STUFF
-	enum {DMABUFFER_SIZE=1296};  // 640x480  so 640*2*2
+	enum {DMABUFFER_SIZE=1296};  // 324*4 
 	static DMAChannel _dmachannel;
 	static DMASetting _dmasettings[2];
 	static uint32_t _dmaBuffer1[DMABUFFER_SIZE];
@@ -270,7 +272,8 @@ class HM01B0
 	uint8_t *_frame_buffer_pointer;
 	uint8_t *_frame_row_buffer_pointer; // start of the row
 	uint8_t _dma_index;
-	enum {DMASTATE_INITIAL=0, DMASTATE_RUNNING, DMASTATE_STOP_REQUESTED, DMA_STATE_STOPPED};
+	uint16_t _dma_number_bytes_without_href;
+	enum {DMASTATE_INITIAL=0, DMASTATE_RUNNING, DMASTATE_SINGLE_FRAME, DMASTATE_STOP_REQUESTED, DMA_STATE_STOPPED};
 	volatile uint8_t _dma_state;
 	static void dmaInterrupt(); 
 	void processDMAInterrupt();

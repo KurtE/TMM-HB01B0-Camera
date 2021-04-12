@@ -47,7 +47,7 @@ SOFTWARE.
 
 #define HIMAX_LINE_LEN_PCK_QQVGA    0x178
 #define HIMAX_FRAME_LENGTH_QQVGA    0x084
-//#define DEBUG_CAMERA
+#define DEBUG_CAMERA
 
 const uint16_t default_regs[][2] = {
     {BLC_TGT,              0x08},          //  BLC target :8  at 8 bit mode
@@ -1119,6 +1119,61 @@ void HM01B0::readFrameFlexIO(void* buffer)
 #endif
 }
 
+typedef struct {
+    uint32_t frameTimeMicros;
+    uint16_t vsyncStartCycleCount;
+    uint16_t vsyncEndCycleCount;
+    uint16_t hrefCount;
+    uint32_t cycleCount;
+    uint16_t pclkCounts[350]; // room to spare.
+    uint16_t pclkNoHrefCount;
+} frameStatics_t;
+
+frameStatics_t fstat;
+
+void HM01B0::captureFrameStatistics()
+{
+   memset((void*)&fstat, 0, sizeof(fstat));
+
+   // lets wait for the vsync to go high;
+    while ((*_vsyncPort & _vsyncMask) != 0); // wait for HIGH
+
+    // now lets wait for it to go low    
+    while ((*_vsyncPort & _vsyncMask) == 0) fstat.vsyncStartCycleCount ++; // wait for LOW
+
+    while ((*_hrefPort & _hrefMask) == 0); // wait for HIGH
+    while ((*_pclkPort & _pclkMask) != 0); // wait for LOW
+
+    uint32_t microsStart = micros();
+    // now loop through until we get the next _vsynd
+    // BUGBUG We know that HSYNC and PCLK on same GPIO VSYNC is not...
+    uint32_t regs_prev = 0;
+    noInterrupts();
+    while ((*_vsyncPort & _vsyncMask) != 0) {
+
+        fstat.cycleCount++;
+        uint32_t regs = (*_hrefPort & (_hrefMask | _pclkMask ));
+        if (regs != regs_prev) {
+            if ((regs & _hrefMask) && ((regs_prev & _hrefMask) ==0)) fstat.hrefCount++;
+            if ((regs & _pclkMask) && ((regs_prev & _pclkMask) ==0)) fstat.pclkCounts[fstat.hrefCount]++;
+            if ((regs & _pclkMask) && ((regs_prev & _hrefMask) ==0)) fstat.pclkNoHrefCount++;
+            regs_prev = regs;
+        }
+    }
+    while ((*_vsyncPort & _vsyncMask) == 0) fstat.vsyncEndCycleCount++; // wait for LOW
+    interrupts();
+    fstat.frameTimeMicros = micros() - microsStart;
+
+    // Maybe return data. print now
+    Serial.printf("*** Frame Capture Data: elapsed Micros: %u loops: %u\n", fstat.frameTimeMicros, fstat.cycleCount);
+    Serial.printf("   VSync Loops Start: %u end: %u\n", fstat.vsyncStartCycleCount, fstat.vsyncEndCycleCount);
+    Serial.printf("   href count: %u pclk ! href count: %u\n    ", fstat.hrefCount,  fstat.pclkNoHrefCount);
+    for (uint16_t ii=0; ii < fstat.hrefCount + 1; ii++) {
+        Serial.printf("%3u ", fstat.pclkCounts[ii]);
+        if (!(ii & 0x0f)) Serial.print("\n    ");
+    }
+    Serial.println();
+}
 
 
 //*****************************************************************************
@@ -1310,7 +1365,7 @@ void dumpDMA_TCD(DMABaseClass *dmabc)
 //===================================================================
 // Start a DMA operation -
 //===================================================================
-bool HM01B0::startReadFrameDMA(void(*callback)(void *frame_buffer), uint8_t *fb1, uint8_t *fb2)
+bool HM01B0::startReadFrameDMA(void(*callback)(void *frame_buffer), uint8_t *fb1, uint8_t *fb2, bool single_frame)
 {
   // First see if we need to allocate frame buffers.
   if (fb1) _frame_buffer_1 = fb1;
@@ -1404,13 +1459,30 @@ bool HM01B0::startReadFrameDMA(void(*callback)(void *frame_buffer), uint8_t *fb1
   Serial.printf("IOMUXC_GPR_GPR26-29:%lx %lx %lx %lx\n", IOMUXC_GPR_GPR26, IOMUXC_GPR_GPR27, IOMUXC_GPR_GPR28, IOMUXC_GPR_GPR29);
   Serial.printf("GPIO1: %lx %lx, GPIO6: %lx %lx\n", GPIO1_DR, GPIO1_PSR, GPIO6_DR, GPIO6_PSR);
   Serial.printf("XBAR CTRL0:%x CTRL1:%x\n\n", XBARA1_CTRL0, XBARA1_CTRL1);
+  Serial.printf("Camera w:%u h:%u\n", w, h);
 #endif
-  _dma_state = DMASTATE_RUNNING;
+  _dma_state = single_frame? DMASTATE_SINGLE_FRAME : DMASTATE_RUNNING;
   _dma_last_completed_frame = nullptr;
   _dma_frame_count = 0;
 
   // Now start an interrupt for start of frame. 
   attachInterrupt(VSYNC_PIN, &frameStartInterrupt, FALLING);
+
+  if (single_frame) {
+      elapsedMillis em = 0;
+      // tell the background stuff DMA stuff to exit.
+      // Note: for now let it end on on, later could disable the DMA directly.
+      while ((em < 1000) && (_dma_state != DMA_STATE_STOPPED)) ; // wait up to a second...
+      if (_dma_state != DMA_STATE_STOPPED) Serial.println("stopReadFrameDMA DMA did not exit correctly...");
+        yield();
+      }
+      // Lets restore some hardware pieces back to the way we found them.
+    #if defined (ARDUINO_TEENSY_MICROMOD)
+      IOMUXC_GPR_GPR27 = _save_IOMUXC_GPR_GPR27;  // Restore... away the configuration before we change...
+    #else
+      IOMUXC_GPR_GPR26 = _save_IOMUXC_GPR_GPR26;  // Restore... away the configuration before we change...
+    #endif
+      *(portConfigRegister(PCLK_PIN)) = _save_pclkPin_portConfigRegister;
 
   //DebugDigitalToggle(OV7670_DEBUG_PIN_1);
   return true;
@@ -1459,7 +1531,9 @@ void  HM01B0::frameStartInterrupt() {
 }
 
 void  HM01B0::processFrameStartInterrupt() {
-  _bytes_left_dma = (w + _frame_ignore_cols) * h; // for now assuming color 565 image...
+  _bytes_left_dma = w * h; // This is an 8 bit image...
+  _dma_number_bytes_without_href = 0;
+
   _dma_index = 0;
   _frame_col_index = 0;  // which column we are in a row
   _frame_row_index = 0;  // which row
@@ -1511,7 +1585,7 @@ void HM01B0::processDMAInterrupt() {
   // lets try dumping a little data on 1st 2nd and last buffer.
 #ifdef DEBUG_CAMERA
   if ((_dma_index < 3) || (buffer_size  < DMABUFFER_SIZE)) {
-    Serial.printf("D(%d, %d, %lu) %u %u: ", _dma_index, buffer_size, _bytes_left_dma, pixformat, _grayscale);
+    Serial.printf("D(%d, %d, %lu): ", _dma_index, buffer_size, _bytes_left_dma);
     for (uint16_t i = 0; i < 8; i++) {
       uint16_t b = buffer[i] >> 4;
       Serial.printf(" %lx(%02x)", buffer[i], b);
@@ -1530,10 +1604,12 @@ void HM01B0::processDMAInterrupt() {
 
     // lets ignre the _hrefmask for now could check later...
     if (!(*buffer & _hrefMask)) {
+        _dma_number_bytes_without_href++;
     #ifdef DEBUG_CAMERA
        Serial.printf("*NHREF (%d %d) %x ", _frame_row_index, _frame_col_index, *buffer);
     #endif
-    } else {
+    } 
+    // else {
         // only process if href high...
         uint16_t b = *buffer >> 4;
         if (_frame_col_index < w) *_frame_buffer_pointer++ = b;
@@ -1545,13 +1621,14 @@ void HM01B0::processDMAInterrupt() {
             _frame_row_buffer_pointer += w; // point to start of new row of buffer...
         }
         _bytes_left_dma--; // for now assuming color 565 image...
-    }
+    //}
     buffer++;
   }
 
   if (_frame_row_index == h) { // We finished a frame lets bail
     _dmachannel.disable();  // disable the DMA now...
     //DebugDigitalWrite(OV7670_DEBUG_PIN_2, LOW);
+        Serial.printf("*** !href: %u\n", _dma_number_bytes_without_href++);
 #ifdef DEBUG_CAMERA
     Serial.println("EOF");
 #endif
@@ -1571,14 +1648,15 @@ void HM01B0::processDMAInterrupt() {
     //DebugDigitalToggle(OV7670_DEBUG_PIN_1);
 
 
-    if (_dma_state == DMASTATE_STOP_REQUESTED) {
+    if ((_dma_state == DMASTATE_STOP_REQUESTED) || (_dma_state == DMASTATE_SINGLE_FRAME)) {
 #ifdef DEBUG_CAMERA
-      Serial.println("HM01B0::dmaInterrupt - Stop requested");
+      Serial.println("HM01B0::dmaInterrupt - Stop requested or one frame only");
 #endif
       _dma_state = DMA_STATE_STOPPED;
+
     } else {
       // We need to start up our ISR for the next frame. 
-      attachInterrupt(VSYNC_PIN, &frameStartInterrupt, RISING);
+      attachInterrupt(VSYNC_PIN, &frameStartInterrupt, FALLING);
     }
   } else {
 
