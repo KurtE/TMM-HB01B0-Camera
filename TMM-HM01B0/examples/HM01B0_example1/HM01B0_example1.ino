@@ -61,7 +61,7 @@ HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT);
 //#define USE_SDCARD 1
 File file;
 
-#define MMOD_ML 0
+#define MMOD_ML 1
 #if MMOD_ML==1
 #define TFT_DC  1   // "TX1" on left side of Sparkfun ML Carrier
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier

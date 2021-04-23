@@ -447,8 +447,18 @@ const uint16_t sHM01B0Init_regs[][2] =
 HM01B0::HM01B0(hw_config_t set_hw_config)
 {
 	_hw_config = set_hw_config;
+    _wire = &Wire;
 	
 }
+
+HM01B0::HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, 
+    uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3, uint8_t g4, uint8_t g5, uint8_t g6,uint8_t g7, TwoWire &wire) : 
+        MCLK_PIN(mclk_pin), PCLK_PIN(pclk_pin), VSYNC_PIN(vsync_pin), HSYNC_PIN(hsync_pin),  
+        G0(g0), G1(g1), G2(g2), G3(g3), G4(g4), G5(g5), G6(g6), G7(g7), _wire(&wire) 
+{
+  _hw_config = HM01B0_MANUAL_SETTINGS;  
+}
+
 
 int HM01B0::reset()
 {
@@ -487,27 +497,27 @@ int HM01B0::reset()
 
 // Read a single uint8_t from address and return it as a uint8_t
 uint8_t HM01B0::cameraReadRegister(uint16_t reg) {
-  Wire.beginTransmission(0x24);
-  Wire.write(reg >> 8);
-  Wire.write(reg);
-  if (Wire.endTransmission(false) != 0) {
+  _wire->beginTransmission(0x24);
+  _wire->write(reg >> 8);
+  _wire->write(reg);
+  if (_wire->endTransmission(false) != 0) {
     Serial.println("error reading HM01B0, address");
     return 0;
   }
-  if (Wire.requestFrom(0x24, 1) < 1) {
+  if (_wire->requestFrom(0x24, 1) < 1) {
     Serial.println("error reading HM01B0, data");
     return 0;
   }
-  return Wire.read();
+  return _wire->read();
 }
 
 
 uint8_t HM01B0::cameraWriteRegister(uint16_t reg, uint8_t data) {
-  Wire.beginTransmission(0x24);
-  Wire.write(reg >> 8);
-  Wire.write(reg);
-  Wire.write(data);
-  if (Wire.endTransmission() != 0) {
+  _wire->beginTransmission(0x24);
+  _wire->write(reg >> 8);
+  _wire->write(reg);
+  _wire->write(data);
+  if (_wire->endTransmission() != 0) {
     Serial.println("error writing to HM01B0");
   }
   return 0;
@@ -993,7 +1003,7 @@ uint8_t HM01B0::get_ae( ae_cfg_t *psAECfg)
 
 int HM01B0::init()
 {
-	Wire.begin();
+	_wire->begin();
 	
 	if(_hw_config == HM01B0_SPARKFUN_ML_CARRIER || _hw_config == HM01B0_TEENSY_MICROMOD_GPIO_8BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT ||  _hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
 		VSYNC_PIN = 33;
@@ -1167,7 +1177,7 @@ void HM01B0::readFrame4BitGPIO(void* buffer)
   uint8_t* b = (uint8_t*)buffer;
   bool _grayscale;
   int bytesPerRow;
-  uint8_t in0;
+  uint8_t in0 = 0;
   
   //Change for Monodchrome only Sparkfun HB01b0
   #if defined(SensorMonochrome) 
