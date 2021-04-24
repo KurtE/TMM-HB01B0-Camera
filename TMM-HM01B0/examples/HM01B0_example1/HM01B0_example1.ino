@@ -37,7 +37,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 0 // select mode string below
+#define _hmConfig 1 // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
  "HM01B0_TEENSY_MICROMOD_GPIO_8BIT",

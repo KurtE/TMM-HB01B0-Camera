@@ -220,6 +220,16 @@ class HM01B0
 
 	DMAChannel dma_flexio;
 
+	// Added settings for configurable flexio
+	FlexIOHandler *_pflex;
+    IMXRT_FLEXIO_t *_pflexio;
+	uint8_t _fshifter;
+	uint8_t _fshifter_mask;
+    uint8_t _ftimer;
+    uint8_t _dma_source;
+
+
+
 	#if defined (ARDUINO_TEENSY_MICROMOD)
 	uint32_t _save_IOMUXC_GPR_GPR27;
 	#else
