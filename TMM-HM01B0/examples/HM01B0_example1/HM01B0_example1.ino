@@ -37,14 +37,17 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 1 // select mode string below
+#define _hmConfig 6 // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
  "HM01B0_TEENSY_MICROMOD_GPIO_8BIT",
  "HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT",
  "HM01B0_TEENSY_MICROMOD_DMA_8BIT",
  "HM01B0_TEENSY_MICROMOD_GPIO_4BIT",
- "HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT"};
+ "HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT",
+ "HM01B0_FLEXIO_CUSTOM_LIKE_8_BIT",
+ "HM01B0_FLEXIO_CUSTOM_LIKE_4_BIT"
+};
 #if _hmConfig ==0
 HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_GPIO_8BIT);
 #elif _hmConfig ==1
@@ -55,6 +58,20 @@ HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_DMA_8BIT);
 HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_GPIO_4BIT);
 #elif _hmConfig ==4
 HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT);
+#elif _hmConfig ==5
+// We are doing manual settings: 
+// this one should duplicate the 8 bit ML Carrier:
+//    HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, en_pin,
+//    uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3,
+//    uint8_t g4=0xff, uint8_t g5=0xff,uint8_t g6=0xff,uint8_t g7=0xff, TwoWire &wire=Wire);
+HM01B0 hm01b0(7, 8, 33, 32, 2, 40, 41, 42, 43, 44, 45, 6, 9);
+#elif _hmConfig ==6
+// We are doing manual settings: 
+// this one should duplicate the 8 bit ML Carrier:
+//    HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, en_pin,
+//    uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3,
+//    uint8_t g4=0xff, uint8_t g5=0xff,uint8_t g6=0xff,uint8_t g7=0xff, TwoWire &wire=Wire);
+HM01B0 hm01b0(7, 8, 33, 32, 2, 40, 41, 42, 43);
 #endif
 
 //#define USE_SPARKFUN 1
@@ -72,8 +89,8 @@ File file;
 #define TFT_RST 255  // none
 #endif
 
-#define TFT_ST7789 1
-//#define TFT_ILI9341 1
+//#define TFT_ST7789 1
+#define TFT_ILI9341 1
 
 #ifdef TFT_ST7789
 //ST7735 Adafruit 320x240 display

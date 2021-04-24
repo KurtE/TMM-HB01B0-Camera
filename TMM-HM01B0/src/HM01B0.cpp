@@ -451,12 +451,13 @@ HM01B0::HM01B0(hw_config_t set_hw_config)
 	
 }
 
-HM01B0::HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, 
+HM01B0::HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, uint8_t en_pin,
     uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3, uint8_t g4, uint8_t g5, uint8_t g6,uint8_t g7, TwoWire &wire) : 
-        MCLK_PIN(mclk_pin), PCLK_PIN(pclk_pin), VSYNC_PIN(vsync_pin), HSYNC_PIN(hsync_pin),  
-        G0(g0), G1(g1), G2(g2), G3(g3), G4(g4), G5(g5), G6(g6), G7(g7), _wire(&wire) 
+        MCLK_PIN(mclk_pin), PCLK_PIN(pclk_pin), VSYNC_PIN(vsync_pin), HSYNC_PIN(hsync_pin), EN_PIN(en_pin), 
+        G0(g0), G1(g1), G2(g2), G3(g3), G4(g4), G5(g5), G6(g6), G7(g7) 
 {
   _hw_config = HM01B0_FLEXIO_MANUAL_SETTINGS;  
+  _wire = &wire;
 }
 
 
@@ -1466,7 +1467,11 @@ bool HM01B0::flexio_configure_manual_settings()
             return false;
         }
         _hw_config = HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT;
-    } else _hw_config = HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT;
+        Serial.println("Custom - Flexio is 8 bit mode");
+    } else {
+        _hw_config = HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT;
+        Serial.println("Custom - Flexio is 4 bit mode");
+    }
 
     // Needs Shifter 3 (maybe 7 would work as well?)
     _fshifter = 3;
@@ -1485,7 +1490,7 @@ bool HM01B0::flexio_configure_manual_settings()
     }
 
 
-    _pflex->setIOPinToFlexMode(MCLK_PIN);
+    _pflex->setIOPinToFlexMode(HSYNC_PIN);
     _pflex->setIOPinToFlexMode(PCLK_PIN);
     _pflex->setIOPinToFlexMode(G0);
     _pflex->setIOPinToFlexMode(G1);
@@ -1513,6 +1518,13 @@ bool HM01B0::flexio_configure_manual_settings()
 
     CCM_CCGR3 |= CCM_CCGR3_FLEXIO2(CCM_CCGR_ON);
 */    
+    // clksel(0-3PLL4, Pll3 PFD2 PLL5, *PLL3_sw)
+    // clk_pred(0, 1, 2, 7) - divide (n+1)
+    // clk_podf(0, *7) divide (n+1)
+    // So default is 480mhz/16
+    // Clock select, pred, podf:
+    _pflex->setClockSettings(3, 1, 1);
+
 
 #ifdef DEBUG_FLEXIO
     Serial.println("FlexIO Configure");
