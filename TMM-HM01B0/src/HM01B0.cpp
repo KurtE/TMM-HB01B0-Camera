@@ -1005,7 +1005,7 @@ uint8_t HM01B0::get_ae( ae_cfg_t *psAECfg)
 int HM01B0::init()
 {
 	_wire->begin();
-	
+
 	if(_hw_config == HM01B0_SPARKFUN_ML_CARRIER || _hw_config == HM01B0_TEENSY_MICROMOD_GPIO_8BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT ||  _hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
 		VSYNC_PIN = 33;
 		PCLK_PIN = 8;
@@ -1041,6 +1041,7 @@ int HM01B0::init()
 			pinMode(pin, INPUT_PULLUP);
 		}
 	} else {
+		Serial.println("8 Data pins configured");
 		for (uint8_t pin : {G0, G1, G2, G3, G4, G5, G6, G7})
 		{
 			pinMode(pin, INPUT_PULLUP);
@@ -1106,7 +1107,7 @@ void HM01B0::readFrame(void* buffer){
 bool HM01B0::readContinuous(bool(*callback)(void *frame_buffer), void *fb1, void *fb2) {
 	set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
 
-	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
 		return startReadFlexIO(callback, fb1, fb2);
 	} else if(_hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
 		return startReadFrameDMA(callback, (uint8_t*) fb1, (uint8_t*)fb2);
@@ -1350,7 +1351,7 @@ void HM01B0::flexio_configure()
 		//  TIMOD: mode, 0 = disable, 1 = 8 bit baud rate, 2 = 8 bit PWM, 3 = 16 bit
 		FLEXIO2_TIMCTL2 = FLEXIO_TIMCTL_TIMOD(3)
 			| FLEXIO_TIMCTL_PINSEL(8) // "Pin" is 16 = PCLK
-			| FLEXIO_TIMCTL_TRGSEL(4 * (9/2)) // "Trigger" is 12 = HSYNC
+			| FLEXIO_TIMCTL_TRGSEL(2 * (9)) // "Trigger" is 12 = HSYNC
 			| FLEXIO_TIMCTL_TRGSRC;
 
 	}

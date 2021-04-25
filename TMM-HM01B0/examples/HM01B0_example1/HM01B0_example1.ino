@@ -65,7 +65,8 @@ HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT);
 //    uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3,
 //    uint8_t g4=0xff, uint8_t g5=0xff,uint8_t g6=0xff,uint8_t g7=0xff, TwoWire &wire=Wire);
 HM01B0 hm01b0(7, 8, 33, 32, 2, 40, 41, 42, 43, 44, 45, 6, 9);
-#elif _hmConfig ==6
+
+#elif _hmConfig == 6
 // We are doing manual settings: 
 // this one should duplicate the 8 bit ML Carrier:
 //    HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, en_pin,
@@ -84,7 +85,7 @@ File file;
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST 0  // "RX1" on left side of Sparkfun ML Carrier
 #else // PJRC_BREAKOUT
-#define TFT_DC  4
+#define TFT_DC  9
 #define TFT_CS  10
 #define TFT_RST 255  // none
 #endif
@@ -204,7 +205,7 @@ void setup()
   status = hm01b0.loadSettings(LOAD_DEFAULT_REGS);
 #endif
 
-  if(_hmConfig == 3 || _hmConfig == 4){
+  if(_hmConfig == 3 || _hmConfig == 4 || _hmConfig ==6){
     status = hm01b0.set_framesize(FRAMESIZE_QVGA4BIT);
   } else {
     status = hm01b0.set_framesize(FRAMESIZE_QVGA);
