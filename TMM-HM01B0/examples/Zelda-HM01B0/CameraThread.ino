@@ -8,14 +8,14 @@ bool hm01b0_flexio_callback(void *pfb)
 }
 
 // Quick and Dirty
-#define UPDATE_ON_CAMERA_FRAMES
+#define UPDATE_ON_CAMERA_FRAMES 3
 
 uint8_t *pfb_last_frame_returned = nullptr;
 
 bool hm01b0_flexio_callback_video(void *pfb)
 {
   pfb_last_frame_returned = (uint8_t*)pfb;
-#ifdef UPDATE_ON_CAMERA_FRAMES
+#if UPDATE_ON_CAMERA_FRAMES == 1
   tft.setOrigin(-2, -2);
   if ((uint32_t)pfb_last_frame_returned >= 0x20200000u)
     arm_dcache_delete(pfb_last_frame_returned, FRAME_WIDTH*FRAME_HEIGHT);
@@ -32,7 +32,7 @@ bool hm01b0_flexio_callback_video(void *pfb)
 
 void frame_complete_cb() {
   //Serial.print("@");
-#ifndef UPDATE_ON_CAMERA_FRAMES
+#if UPDATE_ON_CAMERA_FRAMES == 2
   if (!pfb_last_frame_returned) return;
   tft.setOrigin(-2, -2);
   if ((uint32_t)pfb_last_frame_returned >= 0x20200000u)
@@ -43,6 +43,32 @@ void frame_complete_cb() {
   tft.setOrigin(0, 0);
   uint16_t *pfb = tft.getFrameBuffer();
   if ((uint32_t)pfb >= 0x20200000u) arm_dcache_flush(pfb, FRAME_WIDTH*FRAME_HEIGHT);
+#elif UPDATE_ON_CAMERA_FRAMES == 3
+//  if (!pfb_last_frame_returned) return;
+  tft.setOrigin(-2, -2);
+
+  if (tft.subFrameCount()) {
+    // so finished drawing the top half of the display
+    tft.setClipRect(0, 0, tft.width(), tft.height() / 2);
+    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)image_buffer_display, mono_palette);
+    // Lets play with buffers here. 
+  } else {
+    tft.setClipRect(0, tft.height() / 2, tft.width(), tft.height() / 2);      
+    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)image_buffer_display, mono_palette);
+
+    if (pfb_last_frame_returned) {
+
+        NVIC_DISABLE_IRQ(IRQ_GPIO6789);
+        hm01b0.changeFrameBuffer(pfb_last_frame_returned, image_buffer_display);
+        image_buffer_display = pfb_last_frame_returned;
+        if ((uint32_t)image_buffer_display >= 0x20200000u) arm_dcache_flush(image_buffer_display, FRAME_WIDTH*FRAME_HEIGHT);
+        pfb_last_frame_returned = nullptr;
+        NVIC_ENABLE_IRQ(IRQ_GPIO6789);
+    }
+  }
+  uint16_t *pfb = tft.getFrameBuffer();
+  if ((uint32_t)pfb >= 0x20200000u) arm_dcache_flush(pfb, FRAME_WIDTH*FRAME_HEIGHT);
+
 #endif
 }
 
@@ -71,7 +97,7 @@ uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
   return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
-DMAMEM unsigned char image[324*244];
+//DMAMEM unsigned char image[324*244];
 void send_image( Stream *imgSerial) {
   uint32_t imagesize;
   imagesize = (320 * 240 * 2);
@@ -328,7 +354,11 @@ void camLoop() {
 
             Serial.println("Before Set frame complete CB");
             if (!tft.useFrameBuffer(true)) Serial.println("Failed call to useFrameBuffer");
+            #if UPDATE_ON_CAMERA_FRAMES == 2
             tft.setFrameCompleteCB(&frame_complete_cb, false);
+            #elif UPDATE_ON_CAMERA_FRAMES == 3
+            tft.setFrameCompleteCB(&frame_complete_cb, true);
+            #endif
             Serial.println("Before UPdateScreen Async");
             tft.updateScreenAsync(true);
             Serial.println("* continuous mode (Video) started");
