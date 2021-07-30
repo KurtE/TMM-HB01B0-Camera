@@ -1106,7 +1106,7 @@ bool HM01B0::readContinuous(bool(*callback)(void *frame_buffer), void *fb1, void
 
 void HM01B0::stopReadContinuous() {
 	
-  stopReadFlexIO();
+  signalStopReadFlexIO(500); // wait for halfsecond to exit 
 
 }
 
@@ -1577,6 +1577,7 @@ void HM01B0::frameStartInterruptFlexIO()
 
 void HM01B0::processFrameStartInterruptFlexIO()
 {
+    digitalWriteFast(4, HIGH);
     if (!_dma_active) {
     	FLEXIO2_SHIFTSTAT = _fshifter_mask; // clear any prior shift status
     	FLEXIO2_SHIFTERR = _fshifter_mask;
@@ -1593,6 +1594,7 @@ void HM01B0::processFrameStartInterruptFlexIO()
         _dma_active = true;
     }
 	asm("DSB");
+    digitalWriteFast(4, LOW);
 }
 
 void HM01B0::dmaInterruptFlexIO()
@@ -1602,8 +1604,12 @@ void HM01B0::dmaInterruptFlexIO()
 
 void HM01B0::processDMAInterruptFlexIO()
 {
+    digitalWriteFast(5, HIGH);
 	dma_flexio.clearInterrupt();
-	if (dma_flexio.error()) return; // TODO: report or handle error??
+	if (dma_flexio.error()) {
+        digitalWriteFast(5, LOW);
+        return; // TODO: report or handle error??
+    }
 	void *dest = (_dma_frame_count & 1) ? _frame_buffer_2 : _frame_buffer_1;
 	const uint32_t length = _width*_height;
 	_dma_frame_count++;
@@ -1611,8 +1617,24 @@ void HM01B0::processDMAInterruptFlexIO()
 	if (_callback) (*_callback)(dest); // TODO: use EventResponder
     _dma_active = false;
 	asm("DSB");
+    digitalWriteFast(5, LOW);
 }
 
+bool HM01B0::signalStopReadFlexIO(uint32_t timeout)
+{
+    // lets try to stop in an orderly way.
+    detachInterrupt(VSYNC_PIN);
+    elapsedMicros em = 0;
+    while (_dma_active && em < timeout) ;
+    if (_dma_active) {
+        Serial.print("Stop of flex IO took too long");
+        dma_flexio.disable();   // sledgehammer
+    }
+    _frame_buffer_1 = nullptr;
+    _frame_buffer_2 = nullptr;
+    _callback = nullptr;
+    return true;
+}
 
 bool HM01B0::stopReadFlexIO()
 {

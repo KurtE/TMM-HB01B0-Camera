@@ -37,7 +37,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 1 // select mode string below
+#define _hmConfig 0 // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
  "HM01B0_SPARKFUN_ML_CARRIER",
@@ -70,7 +70,7 @@ HM01B0 hm01b0(7, 8, 33, 32, 2, 40, 41, 42, 43);
 //#define USE_SDCARD 1
 File file;
 
-#define MMOD_ML 0
+#define MMOD_ML 1
 #if MMOD_ML==1
 #define TFT_DC  1   // "TX1" on left side of Sparkfun ML Carrier
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
@@ -80,6 +80,7 @@ File file;
 #define TFT_CS  10
 #define TFT_RST 255  // none
 #endif
+
 
 //#define TFT_ST7789 1
 #define TFT_ILI9341 1
@@ -121,7 +122,7 @@ ae_cfg_t aecfg;
 void setup()
 {
 #ifdef TFT_ILI9341
-  tft.begin();
+  tft.begin(20000000);
 #else
   tft.init(240, 320);           // Init ST7789 320x240
 #endif
@@ -134,6 +135,13 @@ void setup()
   delay(500);
   tft.fillScreen(TFT_BLACK);
   delay(500);
+
+  // temporary debug pins 
+  pinMode(4, OUTPUT); digitalWriteFast(4, LOW);  // D0
+  pinMode(5, OUTPUT); digitalWriteFast(5, LOW);  // D1
+  pinMode(14, OUTPUT); digitalWriteFast(14, LOW);  // A0
+  pinMode(15, OUTPUT); digitalWriteFast(15, LOW);  // A1
+
 
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_YELLOW);
@@ -241,14 +249,16 @@ bool hm01b0_flexio_callback(void *pfb)
 }
 
 // Quick and Dirty
-#define UPDATE_ON_CAMERA_FRAMES
+//#define UPDATE_ON_CAMERA_FRAMES
 
 uint8_t *pfb_last_frame_returned = nullptr;
 
 bool hm01b0_flexio_callback_video(void *pfb)
 {
+  digitalWriteFast(14, HIGH);
   pfb_last_frame_returned = (uint8_t*)pfb;
 #ifdef UPDATE_ON_CAMERA_FRAMES
+
   tft.setOrigin(-2, -2);
   if ((uint32_t)pfb_last_frame_returned >= 0x20200000u)
     arm_dcache_delete(pfb_last_frame_returned, FRAME_WIDTH*FRAME_HEIGHT);
@@ -260,13 +270,18 @@ bool hm01b0_flexio_callback_video(void *pfb)
   if ((uint32_t)pframebuf >= 0x20200000u) arm_dcache_flush(pframebuf, FRAME_WIDTH*FRAME_HEIGHT);
 #endif  
   //Serial.print("#");
+  digitalWriteFast(14, LOW);
   return true;
 }
 
 void frame_complete_cb() {
   //Serial.print("@");
+  digitalWriteFast(15, HIGH);
 #ifndef UPDATE_ON_CAMERA_FRAMES
-  if (!pfb_last_frame_returned) return;
+  if (!pfb_last_frame_returned) {
+    digitalWriteFast(15, LOW);
+    return;
+  }
   tft.setOrigin(-2, -2);
   if ((uint32_t)pfb_last_frame_returned >= 0x20200000u)
     arm_dcache_delete(pfb_last_frame_returned, FRAME_WIDTH*FRAME_HEIGHT);
@@ -277,6 +292,7 @@ void frame_complete_cb() {
   uint16_t *pfb = tft.getFrameBuffer();
   if ((uint32_t)pfb >= 0x20200000u) arm_dcache_flush(pfb, FRAME_WIDTH*FRAME_HEIGHT);
 #endif
+  digitalWriteFast(15, LOW);
 }
 
 
@@ -390,7 +406,14 @@ void loop()
           }
         } else {
           hm01b0.stopReadContinuous();
+
           tft.endUpdateAsync();
+          elapsedMillis emT = 0;
+          while (tft.asyncUpdateActive() && emT < 500) ;
+          if (tft.asyncUpdateActive()) Serial.println("TFT Async still active after timeout");
+          tft.setFrameCompleteCB(nullptr, false);
+          tft.useFrameBuffer(false);
+
           g_continuous_flex_mode = 0;
           Serial.println("* continuous mode stopped");
         }
@@ -492,6 +515,7 @@ void send_raw() {
 }
 #endif
 
+#ifdef USE_SDCARD
 char name[] = "9px_0000.bmp";       // filename convention (will auto-increment)
   DMAMEM unsigned char img[3 * 320*240];
 void save_image_SD() {
@@ -575,6 +599,7 @@ void save_image_SD() {
   file.close();                                        // close file when done writing
   Serial.println("Done Writing BMP");
 }
+#endif
 
 void showCommandList() {
   Serial.println("Send the 'f' character to read a frame using FlexIO (changes hardware setup!)");

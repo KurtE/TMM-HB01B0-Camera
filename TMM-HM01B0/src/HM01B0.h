@@ -157,6 +157,7 @@ class HM01B0
 	//FlexIO is default mode for the camera
 	void readFrameFlexIO(void* buffer);
 	bool startReadFlexIO(bool (*callback)(void *frame_buffer), void *fb1, void *fb2);
+	bool signalStopReadFlexIO(uint32_t timeout);
 	bool stopReadFlexIO();
 
 	// Lets try a dma version.  Doing one DMA that is synchronous does not gain anything

@@ -370,7 +370,13 @@ void camLoop() {
           }
         } else {
           hm01b0.stopReadContinuous();
+
           tft.endUpdateAsync();
+          elapsedMillis emT = 0;
+          while (tft.asyncUpdateActive() && emT < 500) ;
+          if (tft.asyncUpdateActive()) Serial.println("TFT Async still active after timeout");
+          tft.setFrameCompleteCB(nullptr, false);
+          tft.useFrameBuffer(false);
           g_continuous_flex_mode = 0;
           Serial.println("* continuous mode stopped");
         }
