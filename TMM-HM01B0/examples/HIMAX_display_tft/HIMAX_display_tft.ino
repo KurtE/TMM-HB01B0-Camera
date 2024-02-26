@@ -42,7 +42,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM = {
 };
 
 
-#define _hmConfig 3  // select mode string below
+#define _hmConfig   3// select mode string below
 
 PROGMEM const char hmConfig[][48] = {
   "HIMAX_SPARKFUN_ML_CARRIER",
@@ -214,7 +214,7 @@ delay(500);
 tft.fillScreen(TFT_BLACK);
 
 uint8_t status;
-status = himax.begin();
+status = himax.begin(true);
 
 if (!status) {
   Serial.println("Camera failed to start!!!!");
@@ -518,7 +518,10 @@ void read_and_display_one_frame(uint8_t how_to_read) {
   switch (how_to_read) {
     case 0: himax.readFrameFlexIO(frameBuffer, true); break;
     case 1: himax.readFrameFlexIO(frameBuffer, false); break;
-    case 2: himax.readFrameGPIO(frameBuffer); break;
+    case 2: 
+      if (_hmConfig == 2) himax.readFrameGPIO(frameBuffer);
+      else himax.readFrame4BitGPIO(frameBuffer);
+      break;
   }
   digitalWriteFast(2, LOW);
   Serial.println("Finished reading frame");

@@ -972,6 +972,7 @@ void HIMAX::readFrame4BitGPIO(void* buffer)
 	bytesPerRow = _width * 2 * 2;
   #endif
 
+  Serial.printf("readFrame4BitGPIO Gray:%u bpr: %u\n", _grayscale, bytesPerRow);
   // Falling edge indicates start of frame
   //pinMode(PCLK_PIN, INPUT); // make sure back to input pin...
   // lets add our own glitch filter.  Say it must be hig for at least 100us
@@ -988,24 +989,26 @@ void HIMAX::readFrame4BitGPIO(void* buffer)
     while ((*_pclkPort & _pclkMask) != 0); // wait for LOW
     noInterrupts();
 
-    for (int j = 0; j < bytesPerRow; j++) {
+    int skip_first_bytes_in_row = bytesPerRow /*/ 2 */;
+    for (int j = 0; j < (bytesPerRow + skip_first_bytes_in_row); j++) {
       // rising edges clock each data byte
       while ((*_pclkPort & _pclkMask) == 0); // wait for HIGH
 
       //uint32_t in = ((_frame_buffer_pointer)? GPIO1_DR : GPIO6_DR) >> 18; // read all bits in parallel
-      uint8_t in =  (GPIO7_PSR >> 4); // read all bits in parallel
-	  //uint32_t in = mmBus; 
-	  in &= 0x0F;
-	  
-	  if((j + 1) % 2) {
-		  in = (in0 << 4) | (in);
-		  if (!(j & 1) || !_grayscale) {
-			*b++ = in;
-		  }
-	  } else {
-		  in0 = in;
-	  }
-	  
+      if (j >= skip_first_bytes_in_row) {
+          uint8_t in =  (GPIO7_PSR >> 4); // read all bits in parallel
+    	  //uint32_t in = mmBus; 
+    	  in &= 0x0F;
+    	  
+    	  if((j + 1) % 2) {
+    		  in = (in0 << 4) | (in);
+    		  if (!(j & 1) || !_grayscale) {
+    			*b++ = in;
+    		  }
+    	  } else {
+    		  in0 = in;
+    	  }
+      }	  
       while (((*_pclkPort & _pclkMask) != 0) && ((*_hrefPort & _hrefMask) != 0)) ; // wait for LOW bail if _href is lost
     }
 
@@ -1296,6 +1299,7 @@ void HIMAX::readFrameFlexIO(void* buffer, bool fUseDMA)
 //#ifndef FLEXIO_USE_DMA
     // read FlexIO by polling
     if (!fUseDMA) {
+        _pflexio->SHIFTSDEN = _fshifter_mask;
         uint32_t *p = (uint32_t *)buffer;
         //uint32_t *p_end = (uint32_t *)buffer + _width*_height/4; ???
         uint32_t *p_end = (uint32_t *)buffer + _width*_height/4;
