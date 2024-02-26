@@ -160,7 +160,7 @@ class HIMAX
 	void stopReadContinuous();
 
 	//FlexIO is default mode for the camera
-	void readFrameFlexIO(void* buffer);
+	void readFrameFlexIO(void* buffer, bool fUseDMA=true);
 	bool startReadFlexIO(bool (*callback)(void *frame_buffer), void *fb1, void *fb2);
 	bool stopReadFlexIO();
 

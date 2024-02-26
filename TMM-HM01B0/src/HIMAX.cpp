@@ -183,7 +183,7 @@ uint8_t HIMAX::set_framesize(framesize_t new_framesize)
                 }
                 break;
             case FRAMESIZE_QVGA:
-                _width = 324; _height = 244;
+                _width = 320; _height = 240;
                 for (int i=0; QVGA_regs[i][0] && ret == 0; i++) {
                     ret |= cameraWriteRegister( QVGA_regs[i][0], QVGA_regs[i][1]);
                 }
@@ -195,7 +195,7 @@ uint8_t HIMAX::set_framesize(framesize_t new_framesize)
                 }
                 break;
             case FRAMESIZE_QVGA4BIT:
-                _width = 324; _height = 244;
+                _width = 320; _height = 240;
                 for (int i=0; QVGA_regs[i][0] && ret == 0; i++) {
                     ret |= cameraWriteRegister( QVGA_regs[i][0], QVGA_regs[i][1]);
                 }
@@ -1270,28 +1270,65 @@ return true;
 }
 
 
-void HIMAX::readFrameFlexIO(void* buffer)
+void HIMAX::readFrameFlexIO(void* buffer, bool fUseDMA)
 {
     //flexio_configure(); // one-time hardware setup
     // wait for VSYNC to be low
-    while ((*_vsyncPort & _vsyncMask) != 0);
-    
+    //while ((*_vsyncPort & _vsyncMask) != 0);
+    // lets wait for a vsync that is high long enough to not be pin noise
+    elapsedMillis timeout = 0;
+
+    for(;;) {
+        if (((*_vsyncPort & _vsyncMask) == 0) && 
+            ((*_vsyncPort & _vsyncMask) == 0) &&
+            ((*_vsyncPort & _vsyncMask) == 0) &&
+            ((*_vsyncPort & _vsyncMask) == 0) ) break;
+        if (timeout > 500) {
+            Serial.println("Timeout waiting for VSYNC");
+            return;
+        }
+    }
+
+    digitalToggleFast(5); 
     _pflexio->SHIFTSTAT = _fshifter_mask; // clear any prior shift status
     _pflexio->SHIFTERR = _fshifter_mask;
 
-#ifndef FLEXIO_USE_DMA
+//#ifndef FLEXIO_USE_DMA
     // read FlexIO by polling
-    uint32_t *p = (uint32_t *)buffer;
-    //uint32_t *p_end = (uint32_t *)buffer + _width*_height/4; ???
-    uint32_t *p_end = (uint32_t *)buffer + _width*_height/8;
-
-    while (p < p_end) {
-        while ((_pflexio->SHIFTSTAT & _fshifter_mask) == 0) {
-            // wait for FlexIO shifter data
+    if (!fUseDMA) {
+        uint32_t *p = (uint32_t *)buffer;
+        //uint32_t *p_end = (uint32_t *)buffer + _width*_height/4; ???
+        uint32_t *p_end = (uint32_t *)buffer + _width*_height/4;
+        // test to see about 4 bit mode skipping half
+        if (G4 != 0xff) {
+            while (p < p_end) {
+                while ((_pflexio->SHIFTSTAT & _fshifter_mask) == 0) {
+                    // wait for FlexIO shifter data
+                }
+                *p++ = _pflexio->SHIFTBUF[_fshifter]; // should use DMA...
+            }
+        } else {
+            // 4 bit mode:
+            bool save_pixels = true;
+            uint8_t in_row_count = _width / 4;
+            while (p < p_end) {
+                // we want to read and save one rows worth of pixels
+                // and skipt the second half
+                while ((_pflexio->SHIFTSTAT & _fshifter_mask) == 0) {
+                    // wait for FlexIO shifter data
+                }
+                uint32_t sbuf = _pflexio->SHIFTBUF[_fshifter];
+                if (save_pixels) *p++ = sbuf; // should use DMA...
+                in_row_count--;
+                if (in_row_count == 0) {
+                    save_pixels = !save_pixels;
+                    in_row_count = _width / 4;
+                }
+            }
         }
-        *p++ = _pflexio->SHIFTBUF[_fshifter]; // should use DMA...
+        return;
     }
-#else
+//#else
     // read FlexIO by DMA
     dma_flexio.begin();
     const uint32_t length = _width*_height;
@@ -1305,7 +1342,7 @@ void HIMAX::readFrameFlexIO(void* buffer)
     dma_flexio.enable();
     _pflexio->SHIFTSDEN = _fshifter_mask;
 
-    elapsedMillis timeout = 0;
+    timeout = 0;
     while (!dma_flexio.complete()) {
         // wait - we should not need to actually do anything during the DMA transfer
         if (dma_flexio.error()) {
@@ -1324,7 +1361,7 @@ void HIMAX::readFrameFlexIO(void* buffer)
         }
     }
     arm_dcache_delete(buffer, length);
-#endif
+//#endif
 }
 
 
@@ -1828,6 +1865,7 @@ typedef struct {
 } HIMAX_TO_NAME_t;
 
 static const HIMAX_TO_NAME_t HIMAX_reg_name_table[] PROGMEM {
+    #if defined(use_hm01b0)
     {F("MODEL_ID_H"), 0x0000},
     {F("MODEL_ID_L"), 0x0001},
     {F("FRAME_COUNT"), 0x0005},
@@ -1911,6 +1949,116 @@ static const HIMAX_TO_NAME_t HIMAX_reg_name_table[] PROGMEM {
     {F("OUTPUT_PIN_STATUS_CONTROL"), 0x3065},
     {F("ANA_Register_17"), 0x3067},
     {F("PCLK_POLARITY"), 0x3068}
+    #elif defined(use_hm0360)
+    {F("MODEL_ID_H"), 0x0000},
+    {F("MODEL_ID_L"), 0x0001},
+    {F("SILICON_REV"), 0x0002},
+    {F("FRAME_COUNT_H"), 0x0005},
+    {F("FRAME_COUNT_L"), 0x0006},
+    {F("PIXEL_ORDER"), 0x0007},
+    {F("MODE_SELECT"), 0x0100},
+    {F("IMG_ORIENTATION"), 0x0101},
+    {F("EMBEDDED_LINE_EN"), 0x0102},
+    {F("SW_RESET"), 0x0103},
+    {F("COMMAND_UPDATE"), 0x0104},
+    {F("INTEGRATION_H"), 0x0202},
+    {F("INTEGRATION_L"), 0x0203},
+    {F("ANALOG_GAIN"), 0x0205},
+    {F("DIGITAL_GAIN_H"), 0x020E},
+    {F("DIGITAL_GAIN_L"), 0x020F},
+    {F("PLL1_CONFIG"), 0x0300},
+    {F("PLL2_CONFIG"), 0x0301},
+    {F("PLL3_CONFIG"), 0x0302},
+    {F("FRAME_LEN_LINES_H"), 0x0340},
+    {F("FRAME_LEN_LINES_L"), 0x0341},
+    {F("LINE_LEN_PCK_H"), 0x0342},
+    {F("LINE_LEN_PCK_L"), 0x0343},
+    {F("MONO_MODE"), 0x0370},
+    {F("MONO_MODE_ISP"), 0x0371},
+    {F("MONO_MODE_SEL"), 0x0372},
+    {F("H_SUBSAMPLE"), 0x0380},
+    {F("V_SUBSAMPLE"), 0x0381},
+    {F("BINNING_MODE"), 0x0382},
+    {F("TEST_PATTERN_MODE"), 0x0601},
+    {F("BLC_TGT"), 0x1004},
+    {F("BLC2_TGT"), 0x1009},
+    {F("MONO_CTRL"), 0x100A},
+    {F("OPFM_CTRL"), 0x1014},
+    {F("CMPRS_CTRL"), 0x102F},
+    {F("CMPRS_01"), 0x1030},
+    {F("CMPRS_02"), 0x1031},
+    {F("CMPRS_03"), 0x1032},
+    {F("CMPRS_04"), 0x1033},
+    {F("CMPRS_05"), 0x1034},
+    {F("CMPRS_06"), 0x1035},
+    {F("CMPRS_07"), 0x1036},
+    {F("CMPRS_08"), 0x1037},
+    {F("CMPRS_09"), 0x1038},
+    {F("CMPRS_10"), 0x1039},
+    {F("CMPRS_11"), 0x103A},
+    {F("CMPRS_12"), 0x103B},
+    {F("CMPRS_13"), 0x103C},
+    {F("CMPRS_14"), 0x103D},
+    {F("CMPRS_15"), 0x103E},
+    {F("CMPRS_16"), 0x103F},
+    {F("AE_CTRL"), 0x2000},
+    {F("AE_CTRL1"), 0x2001},
+    {F("CNT_ORGH_H"), 0x2002},
+    {F("CNT_ORGH_L"), 0x2003},
+    {F("CNT_ORGV_H"), 0x2004},
+    {F("CNT_ORGV_L"), 0x2005},
+    {F("CNT_STH_H"), 0x2006},
+    {F("CNT_STH_L"), 0x2007},
+    {F("CNT_STV_H"), 0x2008},
+    {F("CNT_STV_L"), 0x2009},
+    {F("CTRL_PG_SKIPCNT"), 0x200A},
+    {F("BV_WIN_WEIGHT_EN"), 0x200D},
+    {F("MAX_INTG_H"), 0x2029},
+    {F("MAX_INTG_L"), 0x202A},
+    {F("MAX_AGAIN"), 0x202B},
+    {F("MAX_DGAIN_H"), 0x202C},
+    {F("MAX_DGAIN_L"), 0x202D},
+    {F("MIN_INTG"), 0x202E},
+    {F("MIN_AGAIN"), 0x202F},
+    {F("MIN_DGAIN"), 0x2030},
+    {F("T_DAMPING"), 0x2031},
+    {F("N_DAMPING"), 0x2032},
+    {F("ALC_TH"), 0x2033},
+    {F("AE_TARGET_MEAN"), 0x2034},
+    {F("AE_MIN_MEAN"), 0x2035},
+    {F("AE_TARGET_ZONE"), 0x2036},
+    {F("CONVERGE_IN_TH"), 0x2037},
+    {F("CONVERGE_OUT_TH"), 0x2038},
+    {F("FS_CTRL"), 0x203B},
+    {F("FS_60HZ_H"), 0x203C},
+    {F("FS_60HZ_L"), 0x203D},
+    {F("FS_50HZ_H"), 0x203E},
+    {F("FS_50HZ_L"), 0x203F},
+    {F("FRAME_CNT_TH"), 0x205B},
+    {F("AE_MEAN"), 0x205D},
+    {F("AE_CONVERGE"), 0x2060},
+    {F("AE_BLI_TGT"), 0x2070},
+    {F("PULSE_MODE"), 0x2061},
+    {F("PULSE_TH_H"), 0x2062},
+    {F("PULSE_TH_L"), 0x2063},
+    {F("INT_INDIC"), 0x2064},
+    {F("INT_CLEAR"), 0x2065},
+    {F("MD_CTRL"), 0x2080},
+    {F("ROI_START_END_V"), 0x2081},
+    {F("ROI_START_END_H"), 0x2082},
+    {F("MD_TH_MIN"), 0x2083},
+    {F("MD_TH_STR_L"), 0x2084},
+    {F("MD_TH_STR_H"), 0x2085},
+    {F("MD_LIGHT_COEF"), 0x2099},
+    {F("MD_BLOCK_NUM_TH"), 0x209B},
+    {F("MD_LATENCY"), 0x209C},
+    {F("MD_LATENCY_TH"), 0x209D},
+    {F("MD_CTRL1"), 0x209E},
+    {F("PMU_CFG_3"), 0x3024},
+    {F("PMU_CFG_4"), 0x3025},
+    {F("WIN_MODE"), 0x3030},
+    {F("PAD_REGISTER_07"), 0x3112}
+#endif
 };
 
 void HIMAX::showRegisters(void)

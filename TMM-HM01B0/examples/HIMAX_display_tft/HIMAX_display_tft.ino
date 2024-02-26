@@ -42,7 +42,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM = {
 };
 
 
-#define _hmConfig 2  // select mode string below
+#define _hmConfig 3  // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
   "HIMAX_SPARKFUN_ML_CARRIER",
@@ -130,7 +130,7 @@ uint16_t FRAME_WIDTH, FRAME_HEIGHT;
 DMAMEM uint8_t frameBuffer[(328) * 248] __attribute__((aligned(32)));
 uint8_t sendImageBuf[(328) * 248 * 2];
 DMAMEM uint8_t frameBuffer2[(328) * 248] __attribute__((aligned(32)));
-#else   //     {WIN_MODE,              0x01}
+#else  //     {WIN_MODE,              0x01}
 // WIN mode turned on in sensor
 DMAMEM uint8_t frameBuffer[(320) * 240] __attribute__((aligned(32)));
 uint8_t sendImageBuf[(320) * 240 * 2];
@@ -147,6 +147,11 @@ bool g_dma_mode = false;
 ae_cfg_t aecfg;
 
 void setup() {
+
+  pinMode(2, OUTPUT);
+  pinMode(3, OUTPUT);
+  pinMode(5, OUTPUT);
+
   while (!Serial && millis() < 5000) {}
   Serial.begin(921600);
 #if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
@@ -409,67 +414,15 @@ void loop() {
         }
 
       case 'f':
-        {
-          tft.useFrameBuffer(false);
-          tft.fillScreen(TFT_BLACK);
-          //calAE();
-          Serial.println("Reading frame");
-          Serial.printf("Buffer: %p halfway: %p end:%p\n", frameBuffer, &frameBuffer[himax.width() * himax.height() / 2], &frameBuffer[himax.width() * himax.height()]);
-          memset((uint8_t *)frameBuffer, 0, sizeof(frameBuffer));
-          himax.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-          himax.readFrame(frameBuffer);
-          Serial.println("Finished reading frame");
-          Serial.flush();
-
-          for (volatile uint8_t *pfb = frameBuffer; pfb < (frameBuffer + 4 * himax.width()); pfb += himax.width()) {
-            Serial.printf("\n%08x: ", (uint32_t)pfb);
-            for (uint16_t i = 0; i < 8; i++) Serial.printf("%02x ", pfb[i]);
-            Serial.print("..");
-            Serial.print("..");
-            for (uint16_t i = himax.width() - 8; i < himax.width(); i++) Serial.printf("%04x ", pfb[i]);
-          }
-          Serial.println("\n");
-
-          // Lets dump out some of center of image.
-          Serial.println("Show Center pixels\n");
-          for (volatile uint8_t *pfb = frameBuffer + himax.width() * ((himax.height() / 2) - 8); pfb < (frameBuffer + himax.width() * (himax.height() / 2 + 8)); pfb += himax.width()) {
-            Serial.printf("\n%08x: ", (uint32_t)pfb);
-            for (uint16_t i = 0; i < 8; i++) Serial.printf("%02x ", pfb[i]);
-            Serial.print("..");
-            for (uint16_t i = (himax.width() / 2) - 4; i < (himax.width() / 2) + 4; i++) Serial.printf("%02x ", pfb[i]);
-            Serial.print("..");
-            for (uint16_t i = himax.width() - 8; i < himax.width(); i++) Serial.printf("%02x ", pfb[i]);
-          }
-          Serial.println("\n...");
-
-          int numPixels = himax.width() * himax.height();
-          Serial.printf("TFT(%u, %u) Camera(%u, %u)\n", tft.width(), tft.height(), himax.width(), himax.height());
-
-          tft.setOrigin(-2, -2);
-          tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
-          tft.setOrigin(0, 0);
-          ch = ' ';
-          g_continuous_flex_mode = false;
+          // read one frame and display it using DMA
+          read_and_display_one_frame(0);
           break;
-        }
-      case 'F':
-        {
-          if (!g_continuous_flex_mode) {
-            if (himax.readContinuous(&himax_flexio_callback, frameBuffer, frameBuffer2)) {
-              Serial.println("* continuous mode started");
-              g_flexio_capture_count = 0;
-              g_flexio_redraw_count = 0;
-              g_continuous_flex_mode = true;
-            } else {
-              Serial.println("* error, could not start continuous mode");
-            }
-          } else {
-            himax.stopReadContinuous();
-            g_continuous_flex_mode = false;
-            Serial.println("* continuous mode stopped");
-          }
+      case 'n':
+          read_and_display_one_frame(1);
           break;
-        }
+      case 'g':
+          read_and_display_one_frame(2);
+          break;
       case 'V':
         {
           if (!g_continuous_flex_mode) {
@@ -552,6 +505,58 @@ uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 
+void read_and_display_one_frame(uint8_t how_to_read) {
+  tft.useFrameBuffer(false);
+  tft.fillScreen(TFT_BLACK);
+  //calAE();
+  Serial.println("Reading frame");
+  Serial.printf("Buffer: %p halfway: %p end:%p\n", frameBuffer, &frameBuffer[himax.width() * himax.height() / 2], &frameBuffer[himax.width() * himax.height()]);
+  memset((uint8_t *)frameBuffer, 0, sizeof(frameBuffer));
+  himax.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+
+  digitalWriteFast(2, HIGH);
+  switch (how_to_read) {
+    case 0: himax.readFrameFlexIO(frameBuffer, true); break;
+    case 1: himax.readFrameFlexIO(frameBuffer, false); break;
+    case 2: himax.readFrameGPIO(frameBuffer); break;
+  }
+  digitalWriteFast(2, LOW);
+  Serial.println("Finished reading frame");
+  Serial.flush();
+
+  for (volatile uint8_t *pfb = frameBuffer; pfb < (frameBuffer + 4 * himax.width()); pfb += himax.width()) {
+    Serial.printf("\n%08x: ", (uint32_t)pfb);
+    for (uint16_t i = 0; i < 8; i++) Serial.printf("%02x ", pfb[i]);
+    Serial.print("..");
+    Serial.print("..");
+    for (uint16_t i = himax.width() - 8; i < himax.width(); i++) Serial.printf("%04x ", pfb[i]);
+  }
+  Serial.println("\n");
+
+  // Lets dump out some of center of image.
+  Serial.println("Show Center pixels\n");
+  for (volatile uint8_t *pfb = frameBuffer + himax.width() * ((himax.height() / 2) - 8); pfb < (frameBuffer + himax.width() * (himax.height() / 2 + 8)); pfb += himax.width()) {
+    Serial.printf("\n%08x: ", (uint32_t)pfb);
+    for (uint16_t i = 0; i < 8; i++) Serial.printf("%02x ", pfb[i]);
+    Serial.print("..");
+    for (uint16_t i = (himax.width() / 2) - 4; i < (himax.width() / 2) + 4; i++) Serial.printf("%02x ", pfb[i]);
+    Serial.print("..");
+    for (uint16_t i = himax.width() - 8; i < himax.width(); i++) Serial.printf("%02x ", pfb[i]);
+  }
+  Serial.println("\n...");
+
+  int numPixels = himax.width() * himax.height();
+  Serial.printf("TFT(%u, %u) Camera(%u, %u)\n", tft.width(), tft.height(), himax.width(), himax.height());
+
+  digitalWriteFast(3, HIGH);
+  //tft.setOrigin(-2, -2);
+  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
+  digitalWriteFast(3, LOW);
+  //tft.setOrigin(0, 0);
+  g_continuous_flex_mode = false;
+}
+
+
 //DMAMEM unsigned char image[324*244];
 void send_image(Stream *imgSerial) {
   uint32_t imagesize;
@@ -573,11 +578,11 @@ void send_image(Stream *imgSerial) {
   //imgSerial->write(sendImageBuf, imagesize);
   for (uint32_t row = 0; row < 240; row++) {
     for (uint32_t col = 0; col < 320; col++) {
-      #ifdef WIN_MODE_0  //     {WIN_MODE,              0x00}
+#ifdef WIN_MODE_0  //     {WIN_MODE,              0x00}
       frame_idx = (324 * (row + 2)) + col + 2;
-      #else
+#else
       frame_idx = (320 * row) + col;
-      #endif
+#endif
       uint16_t framePixel = color565(frameBuffer[frame_idx], frameBuffer[frame_idx], frameBuffer[frame_idx]);
       imgSerial->write((framePixel)&0xFF);
       imgSerial->write((framePixel >> 8) & 0xFF);
@@ -686,6 +691,8 @@ void save_image_SD() {
 void showCommandList() {
   Serial.println("Send the 'f' character to read a frame using FlexIO (changes hardware setup!)");
   Serial.println("Send the 'F' to start/stop continuous using FlexIO (changes hardware setup!)");
+  Serial.println("Send the 'n' character to read a frame using FlexIO without DMA(changes hardware setup!)");
+  Serial.println("Send the 'g' character to read a frame using GPIO");
   Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
