@@ -257,7 +257,33 @@
 // Operation mode control
 #define         WIN_MODE                        0x3030
 // IO and clock control
+#define 		VSYNC_FRONT						0x3094
+#define 		VSYNC_END						0x3095
+#define 		HSYNC_FRONT_H					0x3096
+#define 		HSYNC_FRONT_L					0x3097
+#define 		HSYNC_END_H						0x3098
+#define 		HSYNC_END_L						0x3099
+#define 		READ_PU_FRONT					0x309A
+#define 		READ_PU_End						0x309B
+#define 		EARLY_INT_EN					0x309C
+#define 		PCLKO_GATED_EN					0x309E
+#define 		PCLKO_FRAME_FRONT				0x309F
+#define 		PCLKO_FRAME_END					0x30A0
+#define 		PCLKO_LINE_FRONT_H				0x30A1
+#define 		PCLKO_LINE_FRONT_L				0x30A2
+#define 		PCLKO_LINE_END_H				0x30A3
+#define 		PCLKO_LINE_END_L				0x30A4
+#define 		OUTPUT_EN						0x30A5
+#define 		FRAME_OUTPUT_EN					0x30A8
+#define 		MULTI_CAMERA_CONFIG				0x30A9
+#define 		MULTI_CAMERA_TUNE_H				0x30AA
+#define 		MULTI_CAMERA_TUNE_L				0x30AB
+#define 		ANA_REGISTER_03					0x310E
+#define 		ANA_REGISTER_04					0x310F
+#define 		ANA_REGISTER_05					0x3110
+#define 		ANA_REGISTER_06					0x3111
 #define         PAD_REGISTER_07                 0x3112
+#define 		PLL_POST_DIV_D					0x3128
 
 // Register bits/values
 #define         HIMAX_RESET                     0x01

@@ -42,7 +42,8 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM = {
 };
 
 
-#define _hmConfig   3// select mode string below
+#define _hmConfig   2 // select mode string below
+#define GPIO_MODE     // set this to true to compile for GPIO
 
 PROGMEM const char hmConfig[][48] = {
   "HIMAX_SPARKFUN_ML_CARRIER",
@@ -214,7 +215,7 @@ delay(500);
 tft.fillScreen(TFT_BLACK);
 
 uint8_t status;
-status = himax.begin(true);
+status = himax.begin(GPIO_MODE);
 
 if (!status) {
   Serial.println("Camera failed to start!!!!");
